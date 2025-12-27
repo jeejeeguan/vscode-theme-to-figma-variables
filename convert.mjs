@@ -4,26 +4,26 @@ import path from "node:path";
 
 const DEFAULT_OUTPUT_DIR = "output";
 
-const USAGE = `用法:
+const USAGE = `Usage:
   node convert.mjs [--no-union] <input1> <input2> ... [output-dir]
   node convert.mjs [--no-union] <input-dir> [output-dir]
 
-说明:
-- input 可以是文件或目录：
-  • 文件：CSS declarations 纯文本 或 JSON 对象 { "--vscode-xxx": "#fff" }
-  • 目录：自动扫描目录内所有文件
-- 默认输出目录：output/
-- 输出文件按类型分组到子目录：
-  • output/tokens/       - 标准 tokens
-  • output/union/        - 并集版本
-  • output/reports/      - 缺失报告
+Description:
+- input can be a file or directory:
+  • File: CSS declarations plain text OR JSON object { "--vscode-xxx": "#fff" }
+  • Directory: Automatically scan all files in the directory
+- Default output directory: output/
+- Output files are grouped into subdirectories:
+  • output/tokens/       - Standard tokens
+  • output/union/        - Union version
+  • output/reports/      - Missing reports
 
-例子:
+Examples:
   node convert.mjs red.json dark_morden.json
   node convert.mjs ./css_declarations
 `;
 
-// ---------- 解析输入 ----------
+// ---------- Input Parsing ----------
 
 const CSS_PATTERN = /^\s*([_A-Za-z][\w-]*|--[\w-]+)\s*:\s*(.+?)\s*;\s*$/;
 
@@ -37,7 +37,7 @@ function parseCssDeclarations(content) {
     const line = raw.trim();
     if (!line) continue;
 
-    // 容错：忽略 .selector { / } / 注释
+    // Error tolerance: ignore .selector { / } / comments
     if (line === "{" || line === "}") { skipped++; continue; }
     if (line.endsWith("{") || line.startsWith(".")) { skipped++; continue; }
     if (line.startsWith("/*") || line.startsWith("*") || line.startsWith("//")) { skipped++; continue; }
@@ -59,7 +59,7 @@ function readInputAsVarMap(filePath) {
   const content = fs.readFileSync(filePath, "utf8");
   const trimmed = content.trim();
 
-  // 尝试 JSON
+  // Try JSON
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
       const parsed = JSON.parse(trimmed);
@@ -72,7 +72,7 @@ function readInputAsVarMap(filePath) {
         return { vars: out, skipped: 0, kind: "json" };
       }
     } catch {
-      // 不是 JSON，继续按 CSS declarations 解析
+      // Not JSON, continue parsing as CSS declarations
     }
   }
 
@@ -80,7 +80,7 @@ function readInputAsVarMap(filePath) {
   return { vars, skipped, kind: "css" };
 }
 
-// ---------- 颜色解析 & DTCG token ----------
+// ---------- Color Parsing & DTCG Token ----------
 
 function clamp01(x) {
   return Math.min(1, Math.max(0, x));
@@ -130,7 +130,7 @@ function parseColor(v) {
     };
   }
 
-  // 其它值（var(...) / currentColor 等）不作为颜色导出
+  // Other values (var(...) / currentColor, etc.) are not exported as colors
   return null;
 }
 
@@ -148,17 +148,17 @@ function makeDtcgColorTokenFromParsedColor(c) {
 
 const TRANSPARENT_TOKEN = makeDtcgColorTokenFromParsedColor({ r: 0, g: 0, b: 0, a: 0, hex: "#000000" });
 
-// 把 --vscode-editor-background => vscode/editor/background
+// Convert --vscode-editor-background => vscode/editor/background
 function toTokenPath(cssVarName) {
   let n = cssVarName.trim();
   n = n.replace(/^--/, "");
   n = n.replace(/^vscode-/, "");
   const parts = n.split("-");
 
-  // 仅 1 段：vscode/<name>
+  // Only 1 segment: vscode/<name>
   if (parts.length === 1) return ["vscode", parts[0]];
 
-  // 2+ 段：vscode/<group>/<leaf...>
+  // 2+ segments: vscode/<group>/<leaf...>
   const group = parts[0];
   const leaf = parts.slice(1).join("-");
   return ["vscode", group, leaf];
@@ -216,9 +216,9 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
 }
 
-// ---------- 主流程 ----------
+// ---------- Main Process ----------
 
-// 支持的输入文件扩展名
+// Supported input file extensions
 const SUPPORTED_INPUT_EXTS = new Set([".json", ".css", ".txt"]);
 
 function collectInputFiles(inputPath) {
@@ -255,47 +255,47 @@ function parseArgs(argv) {
     process.exit(1);
   }
 
-  // 识别 output-dir：最后一个参数如果"不存在"或"是目录"，就当作输出目录
+  // Identify output-dir: if the last parameter "does not exist" or "is a directory", treat it as the output directory
   let outputDir = DEFAULT_OUTPUT_DIR;
   const last = rest[rest.length - 1];
   if (!last) return { flags, inputs: rest, outputDir };
 
-  // 优先检查是否是已存在的输入目录
+  // First check if it's an existing input directory
   if (fs.existsSync(last)) {
     const st = fs.statSync(last);
-    // 如果是目录且包含支持的输入文件，当作输入目录而非输出目录
+    // If it's a directory and contains supported input files, treat it as input directory, not output directory
     if (st.isDirectory()) {
       const filesInDir = fs.readdirSync(last).filter(f => {
         const ext = path.extname(f).toLowerCase();
         return SUPPORTED_INPUT_EXTS.has(ext);
       });
       if (filesInDir.length > 0) {
-        // 是输入目录，不当作输出目录
+        // Is input directory, not treated as output directory
         return { flags, inputs: rest, outputDir };
       }
-      // 是空目录或不包含支持的文件，当作输出目录
+      // Is empty directory or doesn't contain supported files, treat as output directory
       outputDir = last;
       rest.pop();
     }
   } else if (!fs.existsSync(last)) {
-    // 不存在：当作输出目录
+    // Does not exist: treat as output directory
     outputDir = last;
     rest.pop();
   }
 
   if (rest.length === 0) {
-    console.error("没有输入文件或目录。\n" + USAGE);
+    console.error("No input files or directories.\n" + USAGE);
     process.exit(1);
   }
 
   return { flags, inputs: rest, outputDir };
 }
 
-// 计算字符串显示宽度（中文=2，英文=1）
+// Calculate string display width (Chinese=2, English=1)
 function displayWidth(str) {
   let width = 0;
   for (const ch of str) {
-    // 中文、全角字符占 2 宽度
+    // Chinese and full-width characters occupy 2 width
     if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch)) {
       width += 2;
     } else {
@@ -305,14 +305,14 @@ function displayWidth(str) {
   return width;
 }
 
-// 按显示宽度填充
+// Pad by display width
 function padEndByWidth(str, targetWidth) {
   const currentWidth = displayWidth(str);
   const padding = Math.max(0, targetWidth - currentWidth);
   return str + " ".repeat(padding);
 }
 
-// 打印表格
+// Print table
 function printTable(headers, rows) {
   const colWidths = headers.map((h, i) => {
     const maxWidth = Math.max(
@@ -324,12 +324,12 @@ function printTable(headers, rows) {
 
   const separator = colWidths.map(w => "-".repeat(w)).join("+");
 
-  // 表头
+  // Header
   console.log("+" + separator + "+");
   console.log("|" + headers.map((h, i) => padEndByWidth(h, colWidths[i])).join("|") + "|");
   console.log("+" + separator + "+");
 
-  // 数据行
+  // Data rows
   for (const row of rows) {
     console.log("|" + row.map((c, i) => padEndByWidth(String(c), colWidths[i])).join("|") + "|");
   }
@@ -340,29 +340,29 @@ function main() {
   const { flags, inputs, outputDir } = parseArgs(process.argv.slice(2));
   const unionEnabled = !flags.has("--no-union");
 
-  // 收集所有输入文件（处理目录）
+  // Collect all input files (handle directories)
   const allInputFiles = [];
   for (const inputPath of inputs) {
     if (!fs.existsSync(inputPath)) {
-      console.error(`✗ 找不到输入: ${inputPath}`);
+      console.error(`✗ Input not found: ${inputPath}`);
       process.exit(1);
     }
     const files = collectInputFiles(inputPath);
     if (files.length === 0) {
-      console.error(`✗ 未找到支持的输入文件 (.json/.css/.txt): ${inputPath}`);
+      console.error(`✗ No supported input files found (.json/.css/.txt): ${inputPath}`);
       process.exit(1);
     }
     allInputFiles.push(...files);
   }
 
-  console.log(`\n输出目录: ${outputDir}`);
-  console.log(`输入文件 (${allInputFiles.length}): ${allInputFiles.map(f => path.basename(f)).join(", ")}\n`);
+  console.log(`\nOutput directory: ${outputDir}`);
+  console.log(`Input files (${allInputFiles.length}): ${allInputFiles.map(f => path.basename(f)).join(", ")}\n`);
   ensureDir(outputDir);
 
   /** @type {{ inputPath: string, name: string, flat: Record<string, any>, nested: any, skipped: number, kind: string }[]} */
   const items = [];
 
-  // 1) 单文件转换
+  // 1) Single file conversion
   const tokenRows = [];
   for (const inputPath of allInputFiles) {
     const name = path.basename(inputPath).replace(/\.[^.]+$/, "");
@@ -371,7 +371,7 @@ function main() {
     const flat = flattenCssVarsToColorTokens(vars);
     const nested = nestFlatTokens(flat);
 
-    // 输出到 tokens/ 子目录
+    // Output to tokens/ subdirectory
     const outPath = path.join(outputDir, "tokens", `${name}.tokens.json`);
     writeJson(outPath, nested);
 
@@ -379,10 +379,10 @@ function main() {
     items.push({ inputPath, name, flat, nested, skipped, kind });
   }
 
-  // 打印标准 tokens 表格
-  printTable(["输入文件", "输出路径", "tokens", "skipped", "kind"], tokenRows);
+  // Print standard tokens table
+  printTable(["Input File", "Output Path", "tokens", "skipped", "kind"], tokenRows);
 
-  // 2) 并集(Union)版本
+  // 2) Union version
   if (unionEnabled && items.length >= 2) {
     const unionKeySet = new Set();
     for (const it of items) {
@@ -409,7 +409,7 @@ function main() {
       }
 
       const unionNested = nestFlatTokens(unionFlat, unionKeys);
-      // 输出到 union/ 子目录
+      // Output to union/ subdirectory
       const unionOutPath = path.join(outputDir, "union", `${it.name}.union.tokens.json`);
       writeJson(unionOutPath, unionNested);
 
@@ -417,18 +417,18 @@ function main() {
       unionRows.push([it.name, `union/${it.name}.union.tokens.json`, countLeafTokens(unionNested), missing.length]);
     }
 
-    // 打印 union 表格
+    // Print union table
     console.log();
-    printTable(["文件", "输出路径", "tokens", "缺失补全"], unionRows);
+    printTable(["File", "Output Path", "tokens", "missing filled"], unionRows);
 
-    // 输出到 reports/ 子目录
+    // Output to reports/ subdirectory
     const reportPath = path.join(outputDir, "reports", "union.missing_report.json");
     writeJson(reportPath, { totalUnionKeys: unionKeys.length, report });
-    console.log(`\n✓ 缺失报告: reports/union.missing_report.json (${unionKeys.length} total keys)`);
+    console.log(`\n✓ Missing report: reports/union.missing_report.json (${unionKeys.length} total keys)`);
   } else if (!unionEnabled) {
-    console.log("\n(已关闭 union: --no-union)");
+    console.log("\n(Union disabled: --no-union)");
   } else {
-    console.log("\n(输入文件少于 2 个，跳过 union 生成)");
+    console.log("\n(Less than 2 input files, skip union generation)");
   }
   console.log();
 }
